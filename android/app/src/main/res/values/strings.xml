@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Business Flow</string>
+    <string name="title_activity_main">Business Flow</string>
+    <string name="package_name">id.businessflow.app</string>
+    <string name="custom_url_scheme">id.businessflow.app</string>
+</resources>

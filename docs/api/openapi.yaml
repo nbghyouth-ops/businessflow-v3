@@ -1,0 +1,151 @@
+openapi: 3.1.0
+info:
+  title: Business Flow API
+  version: 1.0.0
+  description: API REST v1 untuk Business Flow (autentikasi perangkat cookie HttpOnly + token sesi tab per-dokumen + RLS).
+servers:
+  - url: /api/v1
+paths:
+  /api/auth/sign-in/social:
+    post:
+      tags: [Auth]
+      summary: Mulai login Google (Authorization Code + PKCE). Kembalikan URL otorisasi Google.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [provider], properties: { provider: { type: string, enum: [google] }, callbackURL: { type: string, description: "Rute internal (allowlist)" } } } } } }
+      responses: { "200": { description: "{ url, redirect }" }, "503": { description: "config_missing: login Google belum dikonfigurasi" } }
+  /api/auth/callback/google:
+    get:
+      tags: [Auth]
+      summary: Callback OAuth (state + PKCE + verifikasi id_token oleh library); membuat sesi DB dan cookie HttpOnly SameSite=Lax.
+      responses: { "302": { description: Redirect ke rute internal bersih } }
+  /api/auth/sign-out:
+    post: { tags: [Auth], summary: Cabut sesi aplikasi saat ini, responses: { "200": { description: OK } } }
+  /api/auth/get-session:
+    get: { tags: [Auth], summary: Sesi saat ini (server memvalidasi; keberadaan cookie bukan autentikasi), responses: { "200": { description: "sesi atau null" } } }
+  /api/v1/account/me:
+    get: { tags: [Account], summary: Profil akun + workspace aktif, responses: { "200": { description: OK }, "401": { description: auth_required } } }
+  /api/v1/account/sessions:
+    get: { tags: [Account], summary: Sesi aktif milik user, responses: { "200": { description: OK } } }
+  /api/v1/account/sessions/revoke:
+    post: { tags: [Account], summary: "Cabut satu sesi atau semua (semua = butuh sesi ≤ 15 menit, 403 reauth_required)", responses: { "200": { description: OK }, "403": { description: reauth_required } } }
+  /api/v1/workspace/members:
+    get: { tags: [Workspace], summary: Anggota workspace, responses: { "200": { description: OK } } }
+  /api/v1/workspace/members/{userId}:
+    patch: { tags: [Workspace], summary: "Ubah peran/status anggota (members:manage; owner dilindungi)", parameters: [{ name: userId, in: path, required: true, schema: { type: string } }], responses: { "200": { description: OK }, "422": { description: owner_protected / self_change } } }
+  /api/v1/workspace/invitations:
+    post: { tags: [Workspace], summary: "Buat undangan (token ditampilkan sekali; hanya hash disimpan; 7 hari)", responses: { "201": { description: "{ token, expiresAt }" } } }
+  /api/v1/invitations/accept:
+    post: { tags: [Workspace], summary: "Terima undangan oleh user yang login (sekali pakai, FOR UPDATE)", responses: { "201": { description: OK }, "409": { description: invitation_invalid / already_member }, "410": { description: invitation_expired } } }
+  /api/v1/workspace/claim:
+    post: { tags: [Workspace], summary: "Klaim workspace lama (grant owner + PIN terbuka + sesi Google)", responses: { "201": { description: OK }, "409": { description: already_claimed } } }
+  /api/v1/prd/assets/{id}/depreciation-preview:
+    get: { tags: [Aset], summary: Pratinjau penyusutan sebulan (tidak mem-post), responses: { "200": { description: OK } } }
+  /api/v1/prd/assets/{id}/depreciation/reverse:
+    post: { tags: [Aset], summary: Balik penyusutan periode lewat jurnal balik, responses: { "201": { description: OK } } }
+  /api/v1/p2/payroll-runs/{id}/post:
+    post: { tags: [HR], summary: Posting payroll draft ke jurnal (Dr beban gaji; Cr utang gaji/potongan), responses: { "201": { description: OK }, "409": { description: bad_transition } } }
+  /api/v1/p2/payroll-runs/{id}/reverse:
+    post: { tags: [HR], summary: Batalkan draft atau balik payroll posted, responses: { "201": { description: OK } } }
+  /api/v1/p2/payroll-runs/{id}/slip/{employeeId}:
+    get: { tags: [HR], summary: Slip gaji dengan jejak perhitungan, responses: { "200": { description: OK } } }
+  /api/v1/exports/{id}/complete:
+    post: { tags: [Export], summary: Klien mengonfirmasi file dibuat (pending→completed), responses: { "201": { description: OK } } }
+  /api/v1/exports/{id}/fail:
+    post: { tags: [Export], summary: Klien melaporkan render gagal, responses: { "201": { description: OK } } }
+  /health:
+    get:
+      summary: Cek kesehatan aplikasi & database
+      responses:
+        "200": { description: Database terhubung dan skema termigrasi }
+        "503": { description: DATABASE_URL_MISSING, SCHEMA_NOT_MIGRATED, atau CONNECTION_ERROR }
+  /device/status:
+    get:
+      summary: Status perangkat non-sensitif untuk layar PIN
+      responses:
+        "200": { description: Status perangkat }
+  /device/unlock:
+    post:
+      summary: Buka kunci sesi tab dengan PIN Argon2id
+      responses:
+        "200": { description: Token sesi tab (memori JS) }
+        "401": { description: PIN salah }
+        "429": { description: Terkunci sementara atau rate-limited }
+  /device/lock:
+    post:
+      summary: Cabut sesi tab saat ini
+      responses:
+        "200": { description: Sesi dicabut }
+  /device/change-pin:
+    post:
+      summary: Ubah PIN perangkat (sesuai spesifikasi tanpa PIN lama)
+      responses:
+        "200": { description: PIN diperbarui dan sesi tab baru diterbitkan }
+  /onboarding/draft:
+    get:
+      summary: Ambil draft onboarding perangkat
+      responses:
+        "200": { description: Draft onboarding }
+    post:
+      summary: Simpan draft onboarding perangkat
+      responses:
+        "200": { description: Draft tersimpan }
+  /onboarding/complete:
+    post:
+      summary: Buat workspace, bisnis, COA, cabang, dan akun kas secara atomik
+      responses:
+        "201": { description: Workspace selesai dibuat }
+  /dashboard:
+    get:
+      summary: Ringkasan KPI dashboard sesuai izin peran
+      responses:
+        "200": { description: Data dashboard }
+  /finance/transactions:
+    post:
+      summary: Catat pemasukan, pengeluaran, atau transfer berimbang
+      responses:
+        "201": { description: Transaksi tercatat }
+  /sales/checkout:
+    post:
+      summary: Checkout POS atomik (faktur, pembayaran, stok, HPP, jurnal)
+      responses:
+        "201": { description: Penjualan berhasil }
+  /exports/receipt:
+    post:
+      summary: Buat snapshot struk penjualan (REPEATABLE READ) dan simpan riwayat ekspor
+      responses:
+        "201": { description: Snapshot struk dibuat }
+  /exports/activity:
+    post:
+      summary: Buat snapshot Business Activity Summary (9 modul) dan simpan riwayat ekspor
+      responses:
+        "201": { description: Snapshot rangkuman aktivitas dibuat }
+  /exports/history:
+    get:
+      summary: Daftar riwayat ekspor untuk unduh ulang
+      responses:
+        "200": { description: Daftar riwayat }
+  /exports/verify:
+    get:
+      summary: Verifikasi kode 8 karakter terhadap riwayat ekspor workspace
+      responses:
+        "200": { description: Hasil validasi kode }
+  /files:
+    get:
+      summary: Daftar lampiran per entitas
+      responses:
+        "200": { description: Daftar file }
+    post:
+      summary: Unggah berkas ke StorageAdapter pg-bytea (maks 3 MB)
+      responses:
+        "201": { description: Berkas tersimpan }
+  /files/{id}/download:
+    get:
+      summary: Unduh berkas terotorisasi
+      responses:
+        "200": { description: Biner berkas }
+  /p2/quotations:
+    get: { summary: Daftar penawaran, responses: { "200": { description: OK } } }
+    post: { summary: Buat penawaran, responses: { "201": { description: Dibuat } } }
+  /p2/imports/commit:
+    post: { summary: Impor CSV klien/produk dengan laporan galat, responses: { "201": { description: Batch tercatat } } }
+  /p2/imports/{id}/rollback:
+    post: { summary: Rollback batch impor CSV, responses: { "200": { description: Di-rollback } } }

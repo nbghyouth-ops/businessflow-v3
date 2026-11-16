@@ -1,0 +1,1 @@
+Arsip dokumen LEGACY/duplikat (dipindahkan dari akar/docs). Tidak dipakai runtime.
